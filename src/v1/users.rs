@@ -1,16 +1,15 @@
 use actix_web::{
     error::PathError,
-    get,
     web::{self, PathConfig, ServiceConfig},
     HttpRequest, HttpResponse,
 };
 use uuid::Uuid;
 
-use crate::repository::RepositoryInjector;
+use crate::repository::Repository;
 
 const PATH: &str = "/user";
 
-pub fn service(cfg: &mut ServiceConfig) {
+pub fn service<R: Repository>(cfg: &mut ServiceConfig) {
     // cfg.service(web::scope("/user").service(getuser)); //se puede poner el scope, sin embargo en este caso get tiene la dirección correcta
     // cfg.service(get); //get user method 1
     // cfg.service(
@@ -29,33 +28,35 @@ pub fn service(cfg: &mut ServiceConfig) {
                 .app_data(
                     PathConfig::default().error_handler(path_config_handler),
                 )
-                .route(web::get().to(get_user)),
+                .route(web::get().to(get_user::<R>)),
         ),
     );
 }
 /* #region get user method 1*/
-#[get("/user/{user_id}")]
-async fn get(
-    user_id: web::Path<String>,
-    repo: web::Data<RepositoryInjector>,
-) -> HttpResponse {
-    if let Ok(parsed_user_id) = Uuid::parse_str(&user_id) {
-        match repo.get_user(&parsed_user_id) {
-            Ok(user) => HttpResponse::Ok().json(user),
-            Err(_) => HttpResponse::NotFound().body("Not found"),
-        }
-    } else {
-        HttpResponse::BadRequest().body("Invalid UUID")
-    }
-}
+// #[get("/user/{user_id}")]
+// async fn get<R: Repository>(
+//     user_id: web::Path<String>,
+//     repo: web::Data<R>,
+//     // repo: web::Data<RepositoryInjector>,
+// ) -> HttpResponse {
+//     if let Ok(parsed_user_id) = Uuid::parse_str(&user_id) {
+//         match repo.get_user(&parsed_user_id) {
+//             Ok(user) => HttpResponse::Ok().json(user),
+//             Err(_) => HttpResponse::NotFound().body("Not found"),
+//         }
+//     } else {
+//         HttpResponse::BadRequest().body("Invalid UUID")
+//     }
+// }
 /* #endregion */
 
 /* #region get user method 2 */
 #[warn(dead_code)]
-async fn get_user(
+async fn get_user<R: Repository>(
     user_id: web::Path<Uuid>,
     // user_id: web::Path<String>,
-    repo: RepositoryInjector,
+    repo: web::Data<R>,
+    // repo: RepositoryInjector,
     // repo: web::Data<RepositoryInjector>,
 ) -> HttpResponse {
     // if let Ok(parsed_user_id) = Uuid::parse_str(&user_id) {
