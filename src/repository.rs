@@ -1,4 +1,5 @@
 use actix_web::FromRequest;
+use uuid::Uuid;
 
 use crate::user::User;
 use std::{
@@ -8,7 +9,10 @@ use std::{
 };
 
 pub trait Repository: Send + Sync + 'static {
-    fn get_user(&self, user_id: &uuid::Uuid) -> Result<User, String>;
+    fn get_user(&self, user_id: &Uuid) -> Result<User, String>;
+    fn create_user(&self, user: &User) -> Result<User, String>;
+    fn update_user(&self, user: &User) -> Result<User, String>;
+    fn delete_user(&self, user_id: &uuid::Uuid) -> Result<Uuid, String>;
 }
 
 // Se crea un struct de estado de la app, en este caso solo contiene el trait de Repository(interfaz)
