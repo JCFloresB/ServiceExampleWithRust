@@ -5,7 +5,7 @@ use actix_web::{
 };
 use uuid::Uuid;
 
-use crate::repository::Repository;
+use crate::{repository::Repository, user::User};
 
 const PATH: &str = "/user";
 
@@ -23,13 +23,16 @@ pub fn service<R: Repository>(cfg: &mut ServiceConfig) {
     // despues de la coma "," se puede hacer otro método, por ejemplo un post y se anexarian al método las configuraciones pertinentes y que solo
     // afecten a este.
     cfg.service(
-        web::scope(PATH).service(
-            web::resource("/{user_id}")
-                .app_data(
-                    PathConfig::default().error_handler(path_config_handler),
-                )
-                .route(web::get().to(get_user::<R>)),
-        ),
+        web::scope(PATH)
+            .app_data(PathConfig::default().error_handler(path_config_handler))
+            // GET
+            .route("/{user_id}", web::get().to(get_user::<R>))
+            // POST
+            .route("/", web::post().to(post::<R>))
+            // PUT
+            .route("/", web::put().to(put::<R>))
+            // DELETE
+            .route("/{user_id}", web::delete().to(delete::<R>)),
     );
 }
 /* #region get user method 1*/
@@ -70,6 +73,40 @@ async fn get_user<R: Repository>(
 }
 /* #endregion */
 
+async fn post<R: Repository>(
+    user: web::Json<User>,
+    repo: web::Data<R>,
+) -> HttpResponse {
+    match repo.create_user(&user) {
+        Ok(user) => HttpResponse::Created().json(user),
+        Err(e) => HttpResponse::InternalServerError()
+            .body(format!("Someting went wrong: {}", e)),
+    }
+}
+
+async fn put<R: Repository>(
+    user: web::Json<User>,
+    repo: web::Data<R>,
+) -> HttpResponse {
+    match repo.update_user(&user) {
+        Ok(user) => HttpResponse::Ok().json(user),
+        Err(e) => {
+            HttpResponse::NotFound().body(format!("Someting went wrong: {}", e))
+        }
+    }
+}
+
+async fn delete<R: Repository>(
+    user_id: web::Path<Uuid>,
+    repo: web::Data<R>,
+) -> HttpResponse {
+    match repo.delete_user(&user_id) {
+        Ok(user) => HttpResponse::Ok().json(user),
+        Err(e) => HttpResponse::InternalServerError()
+            .body(format!("Someting went wrong: {}", e)),
+    }
+}
+
 fn path_config_handler(err: PathError, _req: &HttpRequest) -> actix_web::Error {
     actix_web::error::ErrorBadRequest(err)
 }
@@ -89,6 +126,9 @@ mod test_user {
         CustomRepo {}
         impl Repository for CustomRepo {
             fn get_user(&self, user_id: &uuid::Uuid)-> Result<User, String>;
+            fn create_user(&self, user: &User) -> Result<User, String>;
+            fn update_user(&self, user: &User) -> Result<User, String>;
+            fn delete_user(&self, user_id: &uuid::Uuid) -> Result<Uuid, String>;
         }
     }
 
