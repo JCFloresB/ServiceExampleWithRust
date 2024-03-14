@@ -9,14 +9,13 @@ mod user;
 mod v1;
 use repository::MemoryRepository;
 
-use crate::repository::RepositoryInjector;
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("Inicio de servidor");
     let thread_counter = Arc::new(AtomicI16::new(1));
     //building shared state
-    let repo = RepositoryInjector::new(MemoryRepository::default());
+    let repo = web::Data::new(MemoryRepository::default());
+    // let repo = RepositoryInjector::new(MemoryRepository::default());
     // let repo = RepositoryInjector::new_shared(MemoryRepository::default());
 
     // init env vars
@@ -37,8 +36,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(thread_index))
             .app_data(repo.clone())
             .configure(health::service)
-            .configure(v1::service) //se hace por medio de una fachada para obtener el usuario
-                                    // .service(getuser)
+            .configure(v1::service::<MemoryRepository>) //se hace por medio de una fachada para obtener el usuario
+                                                        // .service(getuser)
     })
     .bind(&address)
     .unwrap_or_else(|err| {
