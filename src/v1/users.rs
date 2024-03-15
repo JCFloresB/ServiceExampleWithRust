@@ -101,7 +101,7 @@ async fn delete<R: Repository>(
     repo: web::Data<R>,
 ) -> HttpResponse {
     match repo.delete_user(&user_id) {
-        Ok(user) => HttpResponse::Ok().json(user),
+        Ok(id) => HttpResponse::Ok().body(id.to_string()),
         Err(e) => HttpResponse::InternalServerError()
             .body(format!("Someting went wrong: {}", e)),
     }
@@ -327,23 +327,24 @@ mod test_user {
         assert_eq!(result.status(), StatusCode::OK);
 
         let body = result.into_body().try_into_bytes().unwrap();
+        let uuid_body = std::str::from_utf8(&body).ok().unwrap();
 
-        let id: uuid::Uuid = match uuid::Uuid::parse_str(
-            std::str::from_utf8(&body).ok().unwrap(),
-        )
-        .ok()
-        {
-            None => {
-                println!("Fallo");
-                user_id
-                // uuid::Uuid::parse_str("b916577c-2c51-4025-891f-13b0e27b8049")
-                //     .unwrap()
-            }
-            Some(u) => u,
-        };
-        println!("Response id: {}", id.to_string());
+        // let id: uuid::Uuid = match uuid::Uuid::parse_str(
+        //     std::str::from_utf8(&body).ok().unwrap(),
+        // )
+        // .ok()
+        // {
+        //     None => {
+        //         println!("Fallo");
+        //         user_id
+        //         // uuid::Uuid::parse_str("b916577c-2c51-4025-891f-13b0e27b8049")
+        //         //     .unwrap()
+        //     }
+        //     Some(u) => u,
+        // };
+        println!("Response id: {}", uuid_body.to_string());
 
-        assert_eq!(id, user_id);
+        assert_eq!(uuid_body.to_string(), user_id.to_string());
         // assert_eq!(uuid::Uuid::parse_str(&id).unwrap(), user_id);
     }
 }
