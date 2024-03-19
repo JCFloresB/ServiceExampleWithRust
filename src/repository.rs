@@ -1,10 +1,11 @@
 use std::sync::{PoisonError, RwLock};
 
 use chrono::Utc;
-use futures::{future::BoxFuture, FutureExt};
+// use futures::{future::BoxFuture, FutureExt};
 use uuid::Uuid;
 
 use crate::user::User;
+use async_trait::async_trait;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -25,17 +26,16 @@ impl<T> From<PoisonError<T>> for RepositoryError {
     }
 }
 
-type RepositoryResultOutput<T> = Result<T, RepositoryError>;
-type RepositoryResult<'a, T> = BoxFuture<'a, RepositoryResultOutput<T>>;
-
+pub type RepositoryResult<T> = Result<T, RepositoryError>;
+#[cfg_attr(test, mockall::automock)]
+// cuando se trate de un test, se creará automáticamente el mock del trait Repository añadiendo el prefijo mock (MockRepository)
+#[async_trait]
 pub trait Repository: Send + Sync + 'static {
-    fn get_user<'a>(&'a self, user_id: &'a Uuid) -> RepositoryResult<'a, User>;
-    fn create_user<'a>(&'a self, user: &'a User) -> RepositoryResult<'a, User>;
-    fn update_user<'a>(&'a self, user: &'a User) -> RepositoryResult<'a, User>;
-    fn delete_user<'a>(
-        &'a self,
-        user_id: &'a uuid::Uuid,
-    ) -> RepositoryResult<'a, Uuid>;
+    async fn get_user(&self, user_id: &Uuid) -> RepositoryResult<User>;
+    async fn create_user(&self, user: &User) -> RepositoryResult<User>;
+    async fn update_user(&self, user: &User) -> RepositoryResult<User>;
+    async fn delete_user(&self, user_id: &uuid::Uuid)
+        -> RepositoryResult<Uuid>;
 }
 pub struct MemoryRepository {
     //se agrega RwLock como envoltorio ya que es un mutex, con la finalidad de poder seguir utilizando self como una referencia inmutable
@@ -51,67 +51,49 @@ impl Default for MemoryRepository {
     }
 }
 
+#[async_trait]
 impl Repository for MemoryRepository {
-    fn get_user<'a>(
-        &'a self,
-        user_id: &'a uuid::Uuid,
-    ) -> RepositoryResult<'a, User> {
-        async move {
-            let users = self.users.read()?;
-            print!("Get user: {:?}", users);
-            users
-                .iter()
-                .find(|u| &u.id == user_id)
-                .cloned()
-                .ok_or_else(|| RepositoryError::InvalidId)
-        }
-        .boxed()
+    async fn get_user(&self, user_id: &uuid::Uuid) -> RepositoryResult<User> {
+        let users = self.users.read()?;
+        print!("Get user: {:?}", users);
+        users
+            .iter()
+            .find(|u| &u.id == user_id)
+            .cloned()
+            .ok_or_else(|| RepositoryError::InvalidId)
     }
 
-    fn create_user<'a>(&'a self, user: &'a User) -> RepositoryResult<'a, User> {
-        async move {
-            if self.get_user(&user.id).await.is_ok() {
-                return Err(RepositoryError::AlreadyExists);
-            }
-            let mut new_user = user.to_owned();
-            new_user.created_at = Some(Utc::now());
+    async fn create_user(&self, user: &User) -> RepositoryResult<User> {
+        if self.get_user(&user.id).await.is_ok() {
+            return Err(RepositoryError::AlreadyExists);
+        }
+        let mut new_user = user.to_owned();
+        new_user.created_at = Some(Utc::now());
+        let mut users = self.users.write().unwrap();
+        users.push(new_user.clone());
+        Ok(new_user)
+    }
+
+    async fn update_user(&self, user: &User) -> RepositoryResult<User> {
+        if let Ok(old_user) = self.get_user(&user.id).await {
+            let mut updated_user = user.to_owned();
+            updated_user.created_at = old_user.created_at;
+            updated_user.updated_at = Some(Utc::now());
             let mut users = self.users.write().unwrap();
-            users.push(new_user.clone());
-            Ok(new_user)
+            users.retain(|x| x.id != updated_user.id); // el vector se queda con todos los elementos que sean diferentes al user id entrante
+            users.push(updated_user.clone()); // se inserta el elemento a actualizar, esto esdespues de que se ha quitado previamente
+            Ok(updated_user)
+        } else {
+            return Err(RepositoryError::DoesNotExists);
         }
-        .boxed()
     }
 
-    fn update_user<'a>(&'a self, user: &'a User) -> RepositoryResult<'a, User> {
-        async move {
-            if let Ok(old_user) = self.get_user(&user.id).await {
-                let mut updated_user = user.to_owned();
-                updated_user.created_at = old_user.created_at;
-                updated_user.updated_at = Some(Utc::now());
-                let mut users = self.users.write().unwrap();
-                users.retain(|x| x.id != updated_user.id); // el vector se queda con todos los elementos que sean diferentes al user id entrante
-                users.push(updated_user.clone()); // se inserta el elemento a actualizar, esto esdespues de que se ha quitado previamente
-                Ok(updated_user)
-            } else {
-                return Err(RepositoryError::DoesNotExists);
-            }
-        }
-        .boxed()
-    }
-
-    fn delete_user<'a>(
-        &'a self,
-        user_id: &'a uuid::Uuid,
-    ) -> RepositoryResult<'a, Uuid> {
-        async move {
-            let mut users = self.users.write()?;
-            users.retain(|x| x.id != *user_id); // el vector se queda con todos los elementos que sean diferentes al user id entrante
-            Ok(user_id.to_owned())
-        }
-        .boxed()
-        // let mut users = self.users.write().unwrap();
-        // users.retain(|x| x.id != *user_id); // el vector se queda con todos los elementos que sean diferentes al user id entrante
-        // Ok(user_id.to_owned())
-        // Box::pin(std::future::ready(Ok(user_id.to_owned())))
+    async fn delete_user(
+        &self,
+        user_id: &uuid::Uuid,
+    ) -> RepositoryResult<Uuid> {
+        let mut users = self.users.write()?;
+        users.retain(|x| x.id != *user_id); // el vector se queda con todos los elementos que sean diferentes al user id entrante
+        Ok(user_id.to_owned())
     }
 }

@@ -57,19 +57,12 @@ pub fn service<R: Repository>(cfg: &mut ServiceConfig) {
 #[warn(dead_code)]
 async fn get_user<R: Repository>(
     user_id: web::Path<Uuid>,
-    // user_id: web::Path<String>,
     repo: web::Data<R>,
-    // repo: RepositoryInjector,
-    // repo: web::Data<RepositoryInjector>,
 ) -> HttpResponse {
-    // if let Ok(parsed_user_id) = Uuid::parse_str(&user_id) {
     match repo.get_user(&user_id).await {
         Ok(user) => HttpResponse::Ok().json(user),
         Err(_) => HttpResponse::NotFound().body("Not found"),
     }
-    // } else {
-    //     HttpResponse::BadRequest().body("Invalid UUID")
-    // }
 }
 /* #endregion */
 
@@ -114,25 +107,30 @@ fn path_config_handler(err: PathError, _req: &HttpRequest) -> actix_web::Error {
 #[cfg(test)]
 mod test_user {
 
-    use crate::repository::RepositoryError;
+    use crate::repository::MockRepository;
+    // use crate::repository::RepositoryResult;
     use crate::user::{CustomData, User};
 
     use super::*;
     use actix_web::body::MessageBody;
+    // use actix_web::body::MessageBody;
     use actix_web::http::StatusCode;
+    // use async_trait::async_trait;
     use chrono::{NaiveDate, Utc};
-    use mockall::predicate::*;
-    use mockall::*;
+    // use mockall::predicate::*;
+    // use mockall::*;
 
-    mock! {
-        CustomRepo {}
-        impl Repository for CustomRepo {
-            fn get_user(&self, user_id: &uuid::Uuid)-> Result<User, RepositoryError>;
-            fn create_user(&self, user: &User) -> Result<User, RepositoryError>;
-            fn update_user(&self, user: &User) -> Result<User, RepositoryError>;
-            fn delete_user(&self, user_id: &uuid::Uuid) -> Result<Uuid, RepositoryError>;
-        }
-    }
+    // mock! {
+    //     CustomRepo {}
+    //     #[async_trait]
+    //     impl Repository for CustomRepo {
+    //         async fn get_user(&self, user_id: &Uuid) -> RepositoryResult<User>;
+    //         async fn create_user(&self, user: &User) -> RepositoryResult<User>;
+    //         async fn update_user(&self, user: &User) -> RepositoryResult<User>;
+    //         async fn delete_user(&self, user_id: &uuid::Uuid)
+    //             -> RepositoryResult<Uuid>;
+    //     }
+    // }
 
     pub fn create_test_user(
         id: uuid::Uuid,
@@ -158,7 +156,7 @@ mod test_user {
         let user_id = uuid::Uuid::new_v4();
         let user_name = "Juan Carlos";
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_get_user().returning(move |&id| {
             let user =
                 create_test_user(id, String::from(user_name), (1984, 02, 14));
@@ -176,7 +174,7 @@ mod test_user {
         let user_id = uuid::Uuid::new_v4();
         let user_name = "Juan Carlos";
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_get_user().returning(move |&id| {
             let user =
                 create_test_user(id, String::from(user_name), (1984, 02, 14));
@@ -198,7 +196,7 @@ mod test_user {
         let user_id = uuid::Uuid::new_v4();
         let user_name = "Juan Carlos";
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_get_user().returning(move |&id| {
             let user =
                 create_test_user(id, String::from(user_name), (1984, 02, 14));
@@ -222,7 +220,7 @@ mod test_user {
         let user_id = uuid::Uuid::new_v4();
         let user_name = "Juan Carlos";
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_get_user().returning(move |&id| {
             let user =
                 create_test_user(id, String::from("Pancho"), (1984, 02, 14));
@@ -248,7 +246,7 @@ mod test_user {
         let new_user =
             create_test_user(user_id, String::from(user_name), (1984, 02, 14));
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_create_user()
             .returning(move |user| Ok(user.to_owned()));
 
@@ -264,7 +262,7 @@ mod test_user {
         let new_user =
             create_test_user(user_id, String::from(user_name), (1984, 02, 14));
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_create_user()
             .returning(move |user| Ok(user.to_owned()));
 
@@ -284,7 +282,7 @@ mod test_user {
         let new_user =
             create_test_user(user_id, String::from(user_name), (1984, 02, 14));
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_update_user()
             .returning(move |user| Ok(user.to_owned()));
 
@@ -300,7 +298,7 @@ mod test_user {
         let new_user =
             create_test_user(user_id, String::from(user_name), (1984, 02, 14));
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_update_user()
             .returning(move |user| Ok(user.to_owned()));
 
@@ -317,7 +315,7 @@ mod test_user {
     async fn delete_user_workrs() {
         let user_id = uuid::Uuid::new_v4();
 
-        let mut repo = MockCustomRepo::default();
+        let mut repo = MockRepository::default();
         repo.expect_delete_user()
             .returning(move |&id| Ok(id.to_owned()));
 
@@ -329,22 +327,8 @@ mod test_user {
         let body = result.into_body().try_into_bytes().unwrap();
         let uuid_body = std::str::from_utf8(&body).ok().unwrap();
 
-        // let id: uuid::Uuid = match uuid::Uuid::parse_str(
-        //     std::str::from_utf8(&body).ok().unwrap(),
-        // )
-        // .ok()
-        // {
-        //     None => {
-        //         println!("Fallo");
-        //         user_id
-        //         // uuid::Uuid::parse_str("b916577c-2c51-4025-891f-13b0e27b8049")
-        //         //     .unwrap()
-        //     }
-        //     Some(u) => u,
-        // };
         println!("Response id: {}", uuid_body.to_string());
 
         assert_eq!(uuid_body.to_string(), user_id.to_string());
-        // assert_eq!(uuid::Uuid::parse_str(&id).unwrap(), user_id);
     }
 }
