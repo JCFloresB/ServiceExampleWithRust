@@ -1,6 +1,7 @@
 use std::sync::{PoisonError, RwLock};
 
 use chrono::Utc;
+use tracing::instrument;
 // use futures::{future::BoxFuture, FutureExt};
 use uuid::Uuid;
 
@@ -34,8 +35,7 @@ pub trait Repository: Send + Sync + 'static {
     async fn get_user(&self, user_id: &Uuid) -> RepositoryResult<User>;
     async fn create_user(&self, user: &User) -> RepositoryResult<User>;
     async fn update_user(&self, user: &User) -> RepositoryResult<User>;
-    async fn delete_user(&self, user_id: &uuid::Uuid)
-        -> RepositoryResult<Uuid>;
+    async fn delete_user(&self, user_id: &uuid::Uuid) -> RepositoryResult<Uuid>;
 }
 pub struct MemoryRepository {
     //se agrega RwLock como envoltorio ya que es un mutex, con la finalidad de poder seguir utilizando self como una referencia inmutable
@@ -53,9 +53,10 @@ impl Default for MemoryRepository {
 
 #[async_trait]
 impl Repository for MemoryRepository {
+    #[instrument(skip(self))]
     async fn get_user(&self, user_id: &uuid::Uuid) -> RepositoryResult<User> {
         let users = self.users.read()?;
-        print!("Get user: {:?}", users);
+        tracing::debug!("Get user: {:?}", users);
         users
             .iter()
             .find(|u| &u.id == user_id)
@@ -63,6 +64,7 @@ impl Repository for MemoryRepository {
             .ok_or_else(|| RepositoryError::InvalidId)
     }
 
+    #[instrument(skip(self))]
     async fn create_user(&self, user: &User) -> RepositoryResult<User> {
         if self.get_user(&user.id).await.is_ok() {
             return Err(RepositoryError::AlreadyExists);
@@ -71,9 +73,11 @@ impl Repository for MemoryRepository {
         new_user.created_at = Some(Utc::now());
         let mut users = self.users.write().unwrap();
         users.push(new_user.clone());
+        tracing::debug!("User created!!");
         Ok(new_user)
     }
 
+    #[instrument(skip(self))]
     async fn update_user(&self, user: &User) -> RepositoryResult<User> {
         if let Ok(old_user) = self.get_user(&user.id).await {
             let mut updated_user = user.to_owned();
@@ -82,18 +86,19 @@ impl Repository for MemoryRepository {
             let mut users = self.users.write().unwrap();
             users.retain(|x| x.id != updated_user.id); // el vector se queda con todos los elementos que sean diferentes al user id entrante
             users.push(updated_user.clone()); // se inserta el elemento a actualizar, esto esdespues de que se ha quitado previamente
+            tracing::debug!("User with id {} correctly updated!!", user.id);
             Ok(updated_user)
         } else {
+            tracing::error!("User {} not exist!", user.id);
             return Err(RepositoryError::DoesNotExists);
         }
     }
 
-    async fn delete_user(
-        &self,
-        user_id: &uuid::Uuid,
-    ) -> RepositoryResult<Uuid> {
+    #[instrument(skip(self))]
+    async fn delete_user(&self, user_id: &uuid::Uuid) -> RepositoryResult<Uuid> {
         let mut users = self.users.write()?;
         users.retain(|x| x.id != *user_id); // el vector se queda con todos los elementos que sean diferentes al user id entrante
+        tracing::debug!("User {:?} was correctly eliminated", user_id);
         Ok(user_id.to_owned())
     }
 }

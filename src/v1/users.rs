@@ -3,6 +3,7 @@ use actix_web::{
     web::{self, PathConfig, ServiceConfig},
     HttpRequest, HttpResponse,
 };
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{repository::Repository, user::User};
@@ -55,10 +56,8 @@ pub fn service<R: Repository>(cfg: &mut ServiceConfig) {
 
 /* #region get user method 2 */
 #[warn(dead_code)]
-async fn get_user<R: Repository>(
-    user_id: web::Path<Uuid>,
-    repo: web::Data<R>,
-) -> HttpResponse {
+#[instrument(skip(repo))]
+async fn get_user<R: Repository>(user_id: web::Path<Uuid>, repo: web::Data<R>) -> HttpResponse {
     match repo.get_user(&user_id).await {
         Ok(user) => HttpResponse::Ok().json(user),
         Err(_) => HttpResponse::NotFound().body("Not found"),
@@ -66,37 +65,27 @@ async fn get_user<R: Repository>(
 }
 /* #endregion */
 
-async fn post<R: Repository>(
-    user: web::Json<User>,
-    repo: web::Data<R>,
-) -> HttpResponse {
+#[instrument(skip(repo))]
+async fn post<R: Repository>(user: web::Json<User>, repo: web::Data<R>) -> HttpResponse {
     match repo.create_user(&user).await {
         Ok(user) => HttpResponse::Created().json(user),
-        Err(e) => HttpResponse::InternalServerError()
-            .body(format!("Someting went wrong: {}", e)),
+        Err(e) => HttpResponse::InternalServerError().body(format!("Someting went wrong: {}", e)),
     }
 }
 
-async fn put<R: Repository>(
-    user: web::Json<User>,
-    repo: web::Data<R>,
-) -> HttpResponse {
+#[instrument(skip(repo))]
+async fn put<R: Repository>(user: web::Json<User>, repo: web::Data<R>) -> HttpResponse {
     match repo.update_user(&user).await {
         Ok(user) => HttpResponse::Ok().json(user),
-        Err(e) => {
-            HttpResponse::NotFound().body(format!("Someting went wrong: {}", e))
-        }
+        Err(e) => HttpResponse::NotFound().body(format!("Someting went wrong: {}", e)),
     }
 }
 
-async fn delete<R: Repository>(
-    user_id: web::Path<Uuid>,
-    repo: web::Data<R>,
-) -> HttpResponse {
+#[instrument(skip(repo))]
+async fn delete<R: Repository>(user_id: web::Path<Uuid>, repo: web::Data<R>) -> HttpResponse {
     match repo.delete_user(&user_id).await {
         Ok(id) => HttpResponse::Ok().body(id.to_string()),
-        Err(e) => HttpResponse::InternalServerError()
-            .body(format!("Someting went wrong: {}", e)),
+        Err(e) => HttpResponse::InternalServerError().body(format!("Someting went wrong: {}", e)),
     }
 }
 
@@ -132,11 +121,7 @@ mod test_user {
     //     }
     // }
 
-    pub fn create_test_user(
-        id: uuid::Uuid,
-        name: String,
-        birth_date_ymd: (i32, u32, u32),
-    ) -> User {
+    pub fn create_test_user(id: uuid::Uuid, name: String, birth_date_ymd: (i32, u32, u32)) -> User {
         let (y, m, d) = birth_date_ymd;
         // let id = uuid::Uuid::parse_str("b916577c-2c51-4025-891f-13b0e27b8049")
         //     .unwrap();
@@ -158,13 +143,11 @@ mod test_user {
 
         let mut repo = MockRepository::default();
         repo.expect_get_user().returning(move |&id| {
-            let user =
-                create_test_user(id, String::from(user_name), (1984, 02, 14));
+            let user = create_test_user(id, String::from(user_name), (1984, 02, 14));
             Ok(user)
         });
 
-        let result =
-            get_user(web::Path::from(user_id), web::Data::new(repo)).await;
+        let result = get_user(web::Path::from(user_id), web::Data::new(repo)).await;
 
         assert_eq!(result.status(), StatusCode::OK);
     }
@@ -176,13 +159,11 @@ mod test_user {
 
         let mut repo = MockRepository::default();
         repo.expect_get_user().returning(move |&id| {
-            let user =
-                create_test_user(id, String::from(user_name), (1984, 02, 14));
+            let user = create_test_user(id, String::from(user_name), (1984, 02, 14));
             Ok(user)
         });
 
-        let result =
-            get_user(web::Path::from(user_id), web::Data::new(repo)).await;
+        let result = get_user(web::Path::from(user_id), web::Data::new(repo)).await;
 
         let body = result.into_body().try_into_bytes().unwrap();
 
@@ -198,13 +179,11 @@ mod test_user {
 
         let mut repo = MockRepository::default();
         repo.expect_get_user().returning(move |&id| {
-            let user =
-                create_test_user(id, String::from(user_name), (1984, 02, 14));
+            let user = create_test_user(id, String::from(user_name), (1984, 02, 14));
             Ok(user)
         });
 
-        let result =
-            get_user(web::Path::from(user_id), web::Data::new(repo)).await;
+        let result = get_user(web::Path::from(user_id), web::Data::new(repo)).await;
 
         assert_eq!(result.status(), StatusCode::OK);
 
@@ -222,13 +201,11 @@ mod test_user {
 
         let mut repo = MockRepository::default();
         repo.expect_get_user().returning(move |&id| {
-            let user =
-                create_test_user(id, String::from("Pancho"), (1984, 02, 14));
+            let user = create_test_user(id, String::from("Pancho"), (1984, 02, 14));
             Ok(user)
         });
 
-        let result =
-            get_user(web::Path::from(user_id), web::Data::new(repo)).await;
+        let result = get_user(web::Path::from(user_id), web::Data::new(repo)).await;
 
         assert_eq!(result.status(), StatusCode::OK);
 
@@ -243,8 +220,7 @@ mod test_user {
     async fn post_user_workrs() {
         let user_id = uuid::Uuid::new_v4();
         let user_name = "Juan Carlos";
-        let new_user =
-            create_test_user(user_id, String::from(user_name), (1984, 02, 14));
+        let new_user = create_test_user(user_id, String::from(user_name), (1984, 02, 14));
 
         let mut repo = MockRepository::default();
         repo.expect_create_user()
@@ -259,8 +235,7 @@ mod test_user {
     async fn create_user_id_equeals() {
         let user_id = uuid::Uuid::new_v4();
         let user_name = "Juan Carlos";
-        let new_user =
-            create_test_user(user_id, String::from(user_name), (1984, 02, 14));
+        let new_user = create_test_user(user_id, String::from(user_name), (1984, 02, 14));
 
         let mut repo = MockRepository::default();
         repo.expect_create_user()
@@ -279,8 +254,7 @@ mod test_user {
     async fn put_user_workrs() {
         let user_id = uuid::Uuid::new_v4();
         let user_name = "Juan Carlos";
-        let new_user =
-            create_test_user(user_id, String::from(user_name), (1984, 02, 14));
+        let new_user = create_test_user(user_id, String::from(user_name), (1984, 02, 14));
 
         let mut repo = MockRepository::default();
         repo.expect_update_user()
@@ -295,8 +269,7 @@ mod test_user {
     async fn update_user_id_equeals() {
         let user_id = uuid::Uuid::new_v4();
         let user_name = "Juan Carlos";
-        let new_user =
-            create_test_user(user_id, String::from(user_name), (1984, 02, 14));
+        let new_user = create_test_user(user_id, String::from(user_name), (1984, 02, 14));
 
         let mut repo = MockRepository::default();
         repo.expect_update_user()
@@ -319,8 +292,7 @@ mod test_user {
         repo.expect_delete_user()
             .returning(move |&id| Ok(id.to_owned()));
 
-        let result =
-            delete(web::Path::from(user_id), web::Data::new(repo)).await;
+        let result = delete(web::Path::from(user_id), web::Data::new(repo)).await;
 
         assert_eq!(result.status(), StatusCode::OK);
 

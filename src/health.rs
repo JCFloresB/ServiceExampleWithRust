@@ -5,15 +5,19 @@ use actix_web::{
     web::{Data, ServiceConfig},
     HttpResponse,
 };
+use tracing::instrument;
 
+#[instrument(skip(cfg))]
 pub fn service(cfg: &mut ServiceConfig) {
+    tracing::trace!("Init helth service");
     cfg.service(health_check);
 }
 
+#[instrument]
 #[get("/health")]
 async fn health_check(index: Data<i16>) -> HttpResponse {
     let t_index = Arc::new(&index);
-    println!("Llega el dato de thead con valor: {}", t_index.to_string());
+    //tracing::info!("Llega el dato de thead con valor: {}", t_index.to_string());
     HttpResponse::Ok()
         .insert_header(("thread-id", t_index.to_string()))
         .body("¡Hola, otro!!!")
@@ -120,9 +124,6 @@ mod test {
         // Verifica que el cuerpo de la respuesta sea el esperado
         let body = test::read_body(resp).await;
         // println!("Response body: {:?}", String::from(body));
-        assert_eq!(
-            str::from_utf8(&body).unwrap(),
-            "¡Hola, otro!!!".to_string()
-        );
+        assert_eq!(str::from_utf8(&body).unwrap(), "¡Hola, otro!!!".to_string());
     }
 }
